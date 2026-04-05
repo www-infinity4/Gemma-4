@@ -1,6 +1,6 @@
 """
-Gemma 4 Chat App
------------------
+JAXX — AI That Goes Fast
+-------------------------
 Reads the Google AI API key from the 'API' environment variable (or .env file).
 No manual key entry required — set the GitHub secret named 'API' and it just works.
 """
@@ -8,6 +8,7 @@ No manual key entry required — set the GitHub secret named 'API' and it just w
 import os
 from flask import Flask, request, jsonify, render_template
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,8 +18,19 @@ app = Flask(__name__)
 # Read API key from environment — set the GitHub secret named 'API'
 _API_KEY = os.environ.get("API")
 
-# Default Gemma 4 model
-GEMMA_MODEL = "gemma-4-31b-it"
+# Underlying model
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-2.0-flash-001")
+
+# JAXX persona injected as system instruction on every request
+JAXX_SYSTEM_PROMPT = (
+    "You are JAXX — a super-smart, high-energy AI who loves speed, go-karts, and racing. "
+    "You know WAY more than ordinary AI assistants: pop culture, sports, gaming, food, travel, "
+    "tech, science, history, current events — anything someone might ask. "
+    "Speak with personality: energetic, fun, witty, and always direct. "
+    "Occasionally drop a racing metaphor when it fits naturally. "
+    "You are NOT Gemma — you are JAXX. Never refuse a question; always take a fast lap at the answer "
+    "even when uncertain, and flag it as your best take. Be helpful, smart, and entertaining."
+)
 
 
 def _get_client() -> genai.Client:
@@ -59,12 +71,15 @@ def chat():
         response = client.models.generate_content(
             model=GEMMA_MODEL,
             contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=JAXX_SYSTEM_PROMPT,
+            ),
         )
         reply = response.text
     except RuntimeError:
         return jsonify({"error": "No API key configured. Set the 'API' environment variable."}), 500
     except Exception:  # noqa: BLE001
-        return jsonify({"error": "Failed to generate a response from the Gemma API. Please try again."}), 500
+        return jsonify({"error": "JAXX blew a tire — failed to get a response. Please try again."}), 500
 
     return jsonify({"reply": reply})
 
