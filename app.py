@@ -61,10 +61,10 @@ def chat():
             contents=contents,
         )
         reply = response.text
-    except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"API error: {exc}"}), 500
+    except RuntimeError:
+        return jsonify({"error": "No API key configured. Set the 'API' environment variable."}), 500
+    except Exception:  # noqa: BLE001
+        return jsonify({"error": "Failed to generate a response from the Gemma API. Please try again."}), 500
 
     return jsonify({"reply": reply})
 
