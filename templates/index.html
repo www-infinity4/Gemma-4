@@ -798,43 +798,184 @@
     var history      = [];
     var pendingFiles = [];
     var busy         = false;
+    var currentAbortCtrl = null; // AbortController for the in-flight fetch
 
     // ── Figure-8 Canvas Racing Track ──────────────────────────────────────────
-    (function() {
-      var ctx    = trackCanvas.getContext('2d');
-      var dpr    = window.devicePixelRatio || 1;
-      var raf    = null;
-      var W = 0, H = 0; // logical canvas size
+    (function () {
+      var ctx = trackCanvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var raf = null;
+      var W = 0, H = 0;
 
-      // Parametric figure-8 (Lissajous 1:2): x=rx·sin(t), y=ry·sin(2t)
-      function fig8(t) {
+      /* ---- Figure-8 (Lissajous 1:2) helpers ---- */
+      function posAt(t) {
         var cx = W / 2, cy = H / 2;
-        var rx = W / 2 - 14, ry = H / 2 - 12;
+        var rx = W / 2 - 16, ry = H / 2 - 14;
         return { x: cx + rx * Math.sin(t), y: cy + ry * Math.sin(2 * t) };
       }
 
-      // Pre-build a lookup table for the path (used to draw the road)
-      var PATH_STEPS = 360;
-      function buildPath() {
+      // Tangent direction (heading) at parameter t
+      function headingAt(t) {
+        var rx = W / 2 - 16, ry = H / 2 - 14;
+        var dx = rx * Math.cos(t);
+        var dy = 2 * ry * Math.cos(2 * t);
+        return Math.atan2(dy, dx);
+      }
+
+      /* ---- Arc-length table for constant-speed movement ---- */
+      var arcTable = [], arcTotal = 0;
+      function buildArc() {
+        var N = 800, a = 0, prev = posAt(0);
+        arcTable = [{ t: 0, arc: 0 }];
+        for (var i = 1; i <= N; i++) {
+          var t = (i / N) * 2 * Math.PI;
+          var cur = posAt(t);
+          var dx = cur.x - prev.x, dy = cur.y - prev.y;
+          a += Math.sqrt(dx * dx + dy * dy);
+          arcTable.push({ t: t, arc: a });
+          prev = cur;
+        }
+        arcTotal = a;
+      }
+
+      // Binary-search: arc-length s → curve parameter t
+      function arcToT(s) {
+        if (!arcTotal) return 0;
+        s = ((s % arcTotal) + arcTotal) % arcTotal;
+        var lo = 0, hi = arcTable.length - 1;
+        while (lo < hi) {
+          var mid = (lo + hi + 1) >> 1;
+          if (arcTable[mid].arc <= s) lo = mid; else hi = mid - 1;
+        }
+        var a0 = arcTable[lo], a1 = arcTable[Math.min(lo + 1, arcTable.length - 1)];
+        if (a1.arc === a0.arc) return a0.t;
+        return a0.t + (s - a0.arc) / (a1.arc - a0.arc) * (a1.t - a0.t);
+      }
+
+      /* ---- Draw a go-kart in local space (front = +x, body centred at origin) ---- */
+      function drawKart(bodyColor, scale) {
+        scale = scale || 1;
+        var fw = 9 * scale, rw = 8 * scale, bh = 4 * scale;
+
+        // Body — wedge/arrow silhouette
+        ctx.fillStyle = bodyColor;
         ctx.beginPath();
-        for (var i = 0; i <= PATH_STEPS; i++) {
-          var t = (i / PATH_STEPS) * 2 * Math.PI;
-          var p = fig8(t);
+        ctx.moveTo(-rw,        -bh);
+        ctx.lineTo(fw * 0.65,  -bh);
+        ctx.lineTo(fw,          0);
+        ctx.lineTo(fw * 0.65,   bh);
+        ctx.lineTo(-rw,         bh);
+        ctx.closePath();
+        ctx.fill();
+
+        // Cockpit dome
+        ctx.fillStyle = 'rgba(0,8,20,0.92)';
+        ctx.beginPath();
+        ctx.ellipse(-1 * scale, 0, 3.6 * scale, 2.7 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Windshield
+        ctx.fillStyle = 'rgba(120,215,255,0.62)';
+        ctx.beginPath();
+        ctx.ellipse(2.5 * scale, 0, 2.6 * scale, 2.0 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Wheels (front & rear, left & right)
+        var wx = [fw * 0.52, fw * 0.52, -rw * 0.58, -rw * 0.58];
+        var wy = [-bh - 2.6 * scale, bh + 2.6 * scale,
+                  -bh - 2.6 * scale, bh + 2.6 * scale];
+        ctx.fillStyle = '#111';
+        for (var i = 0; i < 4; i++) {
+          ctx.beginPath();
+          ctx.ellipse(wx[i], wy[i], 2.9 * scale, 1.9 * scale, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Wheel hubs
+        ctx.fillStyle = '#3d3d3d';
+        for (var j = 0; j < 4; j++) {
+          ctx.beginPath();
+          ctx.ellipse(wx[j], wy[j], 1.1 * scale, 0.7 * scale, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      /* ---- Racers ---- */
+      var JAXX_IDLE  = 2.2;  // px of arc-length per frame (normal)
+      var JAXX_FAST  = 5.8;  // px of arc-length per frame (thinking)
+      var jaxx = { s: 0, speed: JAXX_IDLE };
+      var aiPool = [
+        { s: 0, speed: 1.7, bodyColor: '#2563eb', glow: 'rgba(37,99,235,0.9)' },
+        { s: 0, speed: 2.0, bodyColor: '#00e87a', glow: 'rgba(0,232,122,0.9)' },
+      ];
+      var activeAi = [];
+      var thinking  = false;
+
+      /* ---- Road drawing ---- */
+      function drawRoad() {
+        ctx.beginPath();
+        var N = 400;
+        for (var i = 0; i <= N; i++) {
+          var t = (i / N) * 2 * Math.PI;
+          var p = posAt(t);
           if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
         }
         ctx.closePath();
+        ctx.strokeStyle = 'rgba(255,45,45,0.07)'; ctx.lineWidth = 38; ctx.lineJoin = 'round'; ctx.stroke();
+        ctx.strokeStyle = '#353542';               ctx.lineWidth = 34; ctx.stroke();
+        ctx.strokeStyle = '#1d1d28';               ctx.lineWidth = 28; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.055)'; ctx.lineWidth = 1;
+        ctx.setLineDash([7, 9]); ctx.stroke(); ctx.setLineDash([]);
+        // Finish line
+        var fc = posAt(0);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(fc.x - 3, fc.y - 16); ctx.lineTo(fc.x + 3, fc.y + 16); ctx.stroke();
+        ctx.setLineDash([]); ctx.restore();
       }
 
-      // Racers: JAXX (always present) + up to 2 AI racers
-      var jaxx    = { t: 0,                    speed: 0.012, emoji: '🏎️', glow: 'rgba(255,208,0,0.85)' };
-      var aiPool  = [
-        { t: Math.PI * 2 / 3,  speed: 0.0095, emoji: '🚗',  glow: 'rgba(37,99,235,0.9)'  },
-        { t: Math.PI * 4 / 3,  speed: 0.0105, emoji: '🚙',  glow: 'rgba(0,232,122,0.9)'  },
-      ];
-      var activeAi = []; // subset of aiPool actually racing
+      /* ---- Main animation loop ---- */
+      function drawFrame() {
+        if (!arcTotal) { raf = requestAnimationFrame(drawFrame); return; }
+        ctx.clearRect(0, 0, trackCanvas.width, trackCanvas.height);
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        drawRoad();
 
-      // Thinking-mode flag (changes JAXX speed/glow)
-      var thinking = false;
+        // Advance arc-length positions
+        jaxx.s = (jaxx.s + jaxx.speed + arcTotal) % arcTotal;
+        activeAi.forEach(function (r) { r.s = (r.s + r.speed + arcTotal) % arcTotal; });
+
+        // Build render list: resolve arc-length → world position + heading + z-depth
+        var renderList = activeAi.map(function (r) {
+          var t = arcToT(r.s), p = posAt(t), h = headingAt(t);
+          return { p: p, h: h, z: Math.sin(t), isJaxx: false,
+                   bodyColor: r.bodyColor, glow: r.glow, scale: 1.0 };
+        });
+        var jt = arcToT(jaxx.s), jp = posAt(jt), jh = headingAt(jt);
+        renderList.push({
+          p: jp, h: jh, z: Math.sin(jt), isJaxx: true, scale: 1.18,
+          bodyColor: thinking ? '#ff2d2d' : '#ffd000',
+          glow: thinking ? 'rgba(255,45,45,1.0)' : 'rgba(255,208,0,0.9)',
+        });
+
+        // Z-sort: negative sin(t) → behind crossing bridge; draw first
+        renderList.sort(function (a, b) { return a.z - b.z; });
+
+        renderList.forEach(function (item) {
+          ctx.save();
+          ctx.translate(item.p.x, item.p.y);
+          ctx.rotate(item.h);
+          ctx.shadowBlur  = item.isJaxx ? (thinking ? 22 : 13) : 9;
+          ctx.shadowColor = item.glow;
+          ctx.fillStyle   = item.bodyColor;
+          drawKart(item.bodyColor, item.scale);
+          ctx.shadowBlur  = 0;
+          ctx.restore();
+        });
+
+        ctx.restore();
+        raf = requestAnimationFrame(drawFrame);
+      }
 
       function resizeCanvas() {
         var rect = trackCanvas.getBoundingClientRect();
@@ -842,74 +983,12 @@
         H = rect.height || 130;
         trackCanvas.width  = Math.round(W * dpr);
         trackCanvas.height = Math.round(H * dpr);
-      }
-
-      function drawFrame() {
-        ctx.clearRect(0, 0, trackCanvas.width, trackCanvas.height);
-        ctx.save();
-        ctx.scale(dpr, dpr);
-
-        // ── Draw road ──
-        buildPath();
-        // Outer glow
-        ctx.strokeStyle = 'rgba(255,45,45,0.07)';
-        ctx.lineWidth = 38;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-        // Border
-        ctx.strokeStyle = '#353542';
-        ctx.lineWidth = 34;
-        ctx.stroke();
-        // Road surface
-        ctx.strokeStyle = '#1d1d28';
-        ctx.lineWidth = 28;
-        ctx.stroke();
-        // Centre dashes
-        ctx.strokeStyle = 'rgba(255,255,255,0.055)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([7, 9]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // ── Finish line at the crossing (t=0) ──
-        var fc = fig8(0);
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(fc.x - 3, fc.y - 16);
-        ctx.lineTo(fc.x + 3, fc.y + 16);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
-
-        // ── Draw racers ──
-        var fontSize = Math.max(14, Math.min(20, H * 0.16));
-        ctx.font = fontSize + 'px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        // AI racers (drawn first, below JAXX)
-        activeAi.forEach(function(r) {
-          var p = fig8(r.t);
-          ctx.shadowBlur   = 8;
-          ctx.shadowColor  = r.glow;
-          ctx.fillText(r.emoji, p.x, p.y);
-          ctx.shadowBlur = 0;
-          r.t = (r.t + r.speed) % (2 * Math.PI);
-        });
-
-        // JAXX kart (on top)
-        var jp = fig8(jaxx.t);
-        ctx.shadowBlur  = thinking ? 14 : 8;
-        ctx.shadowColor = thinking ? 'rgba(255,45,45,1)' : jaxx.glow;
-        ctx.fillText(jaxx.emoji, jp.x, jp.y);
-        ctx.shadowBlur = 0;
-        jaxx.t = (jaxx.t + jaxx.speed) % (2 * Math.PI);
-
-        ctx.restore();
-        raf = requestAnimationFrame(drawFrame);
+        buildArc();
+        // Spread AI racers evenly around the track
+        if (arcTotal) {
+          aiPool[0].s = arcTotal / 3;
+          aiPool[1].s = arcTotal * 2 / 3;
+        }
       }
 
       function start() {
@@ -918,34 +997,18 @@
         drawFrame();
       }
 
-      window.addEventListener('resize', function() { resizeCanvas(); });
+      window.addEventListener('resize', function () { resizeCanvas(); });
 
-      // Public API used by setThinking / sendMessage
       window.Track = {
-        setThinking: function(on, aiCount) {
-          thinking       = on;
-          jaxx.speed     = on ? 0.028 : 0.012;
-          if (on) {
-            var count = Math.min(aiCount || 0, 2);
-            // Only reposition racers that weren't already active
-            for (var i = 0; i < count; i++) {
-              if (activeAi.indexOf(aiPool[i]) === -1) {
-                aiPool[i].t = Math.PI * (2 / 3) * (i + 1);
-              }
-            }
-            activeAi = aiPool.slice(0, count);
-          } else {
-            activeAi = [];
-          }
+        setThinking: function (on, aiCount) {
+          thinking   = on;
+          jaxx.speed = on ? JAXX_FAST : JAXX_IDLE;
+          activeAi   = on ? aiPool.slice(0, Math.min(aiCount || 0, 2)) : [];
         },
       };
 
-      // Start after first paint so layout is ready
-      if (document.readyState === 'complete') {
-        start();
-      } else {
-        window.addEventListener('load', start);
-      }
+      if (document.readyState === 'complete') { start(); }
+      else { window.addEventListener('load', start); }
     }());
 
     // Estimate question complexity → number of extra AI racers (0, 1, or 2)
@@ -1024,6 +1087,9 @@
     }
 
     function startNewChat() {
+      // Cancel any in-flight API request so it can't corrupt the fresh session
+      if (currentAbortCtrl) { currentAbortCtrl.abort(); currentAbortCtrl = null; }
+      if (busy) { setThinking(false); }
       saveCurrentSession();
       currentSessId = null;
       history = [];
@@ -1276,6 +1342,7 @@
 
       var histPayload = history.slice(0,-1).map(function(t){return {role:t.role, text:t.text};});
 
+      currentAbortCtrl = new AbortController();
       try {
         var resp = await fetch('/chat', {
           method: 'POST',
@@ -1285,6 +1352,7 @@
             history: histPayload,
             files:   filesToSend.map(function(f){return {name:f.name, mime_type:f.mime_type, data:f.data};}),
           }),
+          signal: currentAbortCtrl.signal,
         });
 
         if (!resp.ok) {
@@ -1307,9 +1375,13 @@
           scrollBottom();
         }
       } catch(err) {
-        refs.wrapper.remove(); history.pop();
-        showError('Connection blew a tire: ' + err.message);
+        // AbortError means the user started a new chat — don't show an error banner
+        if (err.name !== 'AbortError') {
+          refs.wrapper.remove(); history.pop();
+          showError('Connection blew a tire: ' + err.message);
+        }
       } finally {
+        currentAbortCtrl = null;
         setThinking(false);
         userInput.focus();
       }
@@ -1324,7 +1396,7 @@
       userInput.style.height=Math.min(userInput.scrollHeight,140)+'px';
     });
 
-    clearBtn.addEventListener('click', function(){ saveCurrentSession(); startNewChat(); });
+    clearBtn.addEventListener('click', function(){ startNewChat(); });
 
     document.querySelectorAll('.hint-chip').forEach(function(chip){
       chip.addEventListener('click', function(){
