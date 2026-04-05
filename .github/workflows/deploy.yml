@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  GEMMA_MODEL: gemma-4-31b-it
+
 permissions:
   contents: read
   pages: write
@@ -25,10 +28,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Jinja2
+        run: pip install jinja2
+
       - name: Prepare static site
         run: |
           mkdir -p _site
-          sed 's/{{ model }}/gemma-4-31b-it/g' templates/index.html > _site/index.html
+          python - <<'EOF'
+          import jinja2, os
+          loader = jinja2.FileSystemLoader('templates')
+          env = jinja2.Environment(loader=loader, autoescape=True)
+          tmpl = env.get_template('index.html')
+          html = tmpl.render(model=os.environ['GEMMA_MODEL'])
+          with open('_site/index.html', 'w') as f:
+              f.write(html)
+          EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
