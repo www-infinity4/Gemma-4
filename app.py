@@ -47,6 +47,45 @@ def index():
     return render_template("index.html", model=GEMMA_MODEL)
 
 
+@app.route("/tricorder")
+def tricorder():
+    return render_template("tricorder.html", model=GEMMA_MODEL)
+
+
+@app.route("/tricorder/ask", methods=["POST"])
+def tricorder_ask():
+    """JAXX answers a question scoped to a specific Tricorder coin type."""
+    data = request.get_json(force=True)
+    coin_name = data.get("coin", "").strip()
+    question = data.get("question", "").strip()
+
+    if not question:
+        return jsonify({"error": "Empty question"}), 400
+
+    coin_context = f"The user is asking about the '{coin_name}' coin from the Tricorder Coin System. " if coin_name else ""
+    prompt = (
+        f"{coin_context}"
+        f"Answer this question concisely and with JAXX energy: {question}"
+    )
+
+    try:
+        client = _get_client()
+        response = client.models.generate_content(
+            model=GEMMA_MODEL,
+            contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config=types.GenerateContentConfig(
+                system_instruction=JAXX_SYSTEM_PROMPT,
+            ),
+        )
+        reply = response.text
+    except RuntimeError:
+        return jsonify({"error": "No API key configured. Set the 'API' environment variable."}), 500
+    except Exception:  # noqa: BLE001
+        return jsonify({"error": "JAXX blew a tire — failed to get a response. Please try again."}), 500
+
+    return jsonify({"reply": reply})
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(force=True)

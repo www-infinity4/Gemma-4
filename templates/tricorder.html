@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JAXX Tricorder — Coin System</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #090910;
+      --surface:  #111118;
+      --surface2: #16161f;
+      --border:   #252530;
+      --red:      #ff2d2d;
+      --yellow:   #ffd000;
+      --green:    #00e87a;
+      --cyan:     #00d4ff;
+      --purple:   #a855f7;
+      --text:     #f0f0f0;
+      --muted:    #55556a;
+    }
+
+    html, body {
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--cyan);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-icon { font-size: 1.6rem; line-height: 1; }
+
+    .header-title { display: flex; flex-direction: column; }
+    .header-title h1 {
+      font-size: 1.4rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--cyan) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+    .header-title .tagline {
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .nav-link {
+      font-size: 0.78rem;
+      color: var(--yellow);
+      text-decoration: none;
+      border: 1px solid var(--yellow);
+      border-radius: 20px;
+      padding: 3px 11px;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover { background: var(--yellow); color: #000; }
+
+    .model-badge {
+      margin-left: auto;
+      font-size: 0.7rem;
+      background: #1a1a22;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 48px 24px 32px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .hero-device {
+      font-size: 4rem;
+      margin-bottom: 16px;
+      display: inline-block;
+      animation: device-pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes device-pulse {
+      0%, 100% { filter: drop-shadow(0 0 8px rgba(0,212,255,0.4)); transform: translateY(0); }
+      50%       { filter: drop-shadow(0 0 20px rgba(0,212,255,0.9)); transform: translateY(-6px); }
+    }
+
+    .hero h2 {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--cyan), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      font-size: 0.95rem;
+      color: #999;
+      line-height: 1.7;
+      max-width: 600px;
+      margin: 0 auto 24px;
+    }
+
+    /* ── Priority banner ── */
+    .priorities {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .priority-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1a1a22;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 13px;
+      font-size: 0.76rem;
+      color: #aaa;
+    }
+
+    .priority-chip .pnum {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--cyan);
+      color: #000;
+      font-weight: 700;
+      font-size: 0.65rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Grid ── */
+    .coins-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 20px 60px;
+    }
+
+    /* ── Coin Card ── */
+    .coin-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .coin-card:hover {
+      border-color: var(--card-color, var(--cyan));
+      box-shadow: 0 0 24px color-mix(in srgb, var(--card-color, var(--cyan)) 25%, transparent);
+    }
+
+    .coin-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--card-color, var(--cyan)) 10%, transparent), transparent);
+    }
+
+    .coin-emoji {
+      font-size: 2rem;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .coin-title-block { flex: 1; min-width: 0; }
+    .coin-name {
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--card-color, var(--cyan));
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .coin-subtitle { font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+
+    .priority-badge {
+      font-size: 0.62rem;
+      font-weight: 700;
+      background: var(--card-color, var(--cyan));
+      color: #000;
+      border-radius: 12px;
+      padding: 3px 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .coin-body { padding: 16px 18px; flex: 1; }
+
+    .coin-bullets {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .coin-bullets li {
+      display: flex;
+      gap: 8px;
+      font-size: 0.83rem;
+      color: #bbb;
+      line-height: 1.5;
+    }
+
+    .coin-bullets li::before {
+      content: '▸';
+      color: var(--card-color, var(--cyan));
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── Specs strip ── */
+    .coin-specs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .spec-tag {
+      background: #1a1a22;
+      border: 1px solid #2a2a35;
+      border-radius: 8px;
+      padding: 3px 9px;
+      font-size: 0.7rem;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    /* ── JAXX Ask panel ── */
+    .ask-panel {
+      border-top: 1px solid var(--border);
+      padding: 14px 18px;
+      background: #0d0d14;
+    }
+
+    .ask-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ask-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .ask-input {
+      flex: 1;
+      background: #111118;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-size: 0.82rem;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .ask-input:focus { border-color: var(--card-color, var(--cyan)); }
+    .ask-input::placeholder { color: var(--muted); }
+
+    .ask-btn {
+      background: var(--card-color, var(--cyan));
+      border: none;
+      border-radius: 10px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      color: #000;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.15s;
+    }
+    .ask-btn:hover:not(:disabled) { opacity: 0.8; }
+    .ask-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .ask-response {
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: #ccc;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .ask-response.visible { display: block; }
+
+    .ask-response.thinking {
+      display: block;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .ask-error { color: #ff8080; }
+
+    /* ── Tricorder Base section ── */
+    .base-section {
+      max-width: 1100px;
+      margin: 0 auto 40px;
+      padding: 0 20px;
+    }
+
+    .section-title {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .base-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .base-feature {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .base-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    .base-feature-text h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 3px;
+    }
+
+    .base-feature-text p {
+      font-size: 0.76rem;
+      color: #888;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="header-icon">📡</div>
+    <div class="header-title">
+      <h1>Tricorder</h1>
+      <span class="tagline">Coin System by JAXX</span>
+    </div>
+    <a href="/" class="nav-link">🏎️ JAXX Chat</a>
+    <span class="model-badge">{{ model }}</span>
+  </header>
+
+  <!-- ── Hero ── -->
+  <div class="hero">
+    <div class="hero-device">📡</div>
+    <h2>The Tricorder Coin System</h2>
+    <p>
+      Inspired by the Star Trek tricorder — a single device with limitless capability.
+      Each coin is a specialized, buildable token powered by real off-the-shelf electronics.
+      No science fiction required.
+    </p>
+
+    <!-- Build priorities -->
+    <div class="priorities">
+      <div class="priority-chip"><span class="pnum">1</span> Identity Coin</div>
+      <div class="priority-chip"><span class="pnum">2</span> PEMF Wellness Coin</div>
+      <div class="priority-chip"><span class="pnum">3</span> Tricorder App</div>
+      <div class="priority-chip"><span class="pnum">4</span> Environment Scanner Coin</div>
+    </div>
+  </div>
+
+  <!-- ── Tricorder Base ── -->
+  <div class="base-section">
+    <div class="section-title">The Tricorder Base Hub</div>
+    <div class="base-card">
+      <div class="base-feature">
+        <div class="base-icon">⚡</div>
+        <div class="base-feature-text">
+          <h4>Qi Wireless Charging</h4>
+          <p>Holds 6–12 coins simultaneously. Each coin charges via inductive coupling — no plugs, no pins.</p>
+        </div>
+      </div>
+      <div class="base-feature">
+        <div class="base-icon">📶</div>
+        <div class="base-feature-text">
+          <h4>NFC + BLE Programming</h4>
+          <p>Programs each coin's mode and frequency. Firmware updates pushed over the air from the base station.</p>
+        </div>
+      </div>
+      <div class="base-feature">
+        <div class="base-icon">📊</div>
+        <div class="base-feature-text">
+          <h4>Unified App Dashboard</h4>
+          <p>All coin readings, status, history, and controls in one phone app. Real-time sync.</p>
+        </div>
+      </div>
+      <div class="base-feature">
+        <div class="base-icon">🔄</div>
+        <div class="base-feature-text">
+          <h4>Firmware Over-The-Air</h4>
+          <p>Update any coin's software from the base. New modes, new frequencies, new behaviors — shipped remotely.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Coins Grid ── -->
+  <div class="base-section">
+    <div class="section-title">The Coin Set</div>
+  </div>
+
+  <div class="coins-grid">
+
+    <!-- Identity Coin -->
+    <div class="coin-card" style="--card-color: #00d4ff;">
+      <div class="coin-header">
+        <div class="coin-emoji">🔐</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Identity Coin</div>
+          <div class="coin-subtitle">Hardware security key — no passwords</div>
+        </div>
+        <div class="priority-badge">Priority 1</div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Embedded NFC chip with cryptographically signed unique ID</li>
+          <li>Tap to authenticate on phone or computer — replaces passwords</li>
+          <li>Ownership tracked on blockchain; the physical coin is the key</li>
+          <li>No battery required — powered by the reader's field</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">NFC</span>
+          <span class="spec-tag">No battery</span>
+          <span class="spec-tag">Crypto-signed UID</span>
+          <span class="spec-tag">Blockchain provenance</span>
+          <span class="spec-tag">YubiKey-style auth</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="How does NFC authentication work?" data-coin="Identity Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- PEMF Wellness Coin -->
+    <div class="coin-card" style="--card-color: #00e87a;">
+      <div class="coin-header">
+        <div class="coin-emoji">💊</div>
+        <div class="coin-title-block">
+          <div class="coin-name">PEMF Wellness Coin</div>
+          <div class="coin-subtitle">Programmable EM frequency therapy</div>
+        </div>
+        <div class="priority-badge">Priority 2</div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Tiny coil + ATtiny microcontroller generates specific EM frequencies</li>
+          <li>Schumann resonance (7.83 Hz), focus mode, sleep mode, recovery mode</li>
+          <li>PEMF therapy is FDA-cleared — legal, real, and demonstrable</li>
+          <li>Tricorder base switches modes via BLE; coin runs for days per charge</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">PEMF</span>
+          <span class="spec-tag">ATtiny MCU</span>
+          <span class="spec-tag">7.83 Hz Schumann</span>
+          <span class="spec-tag">LiPo rechargeable</span>
+          <span class="spec-tag">FDA-cleared tech</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What is PEMF therapy and does it work?" data-coin="PEMF Wellness Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Environment Scanner Coin -->
+    <div class="coin-card" style="--card-color: #ffd000;">
+      <div class="coin-header">
+        <div class="coin-emoji">🌡️</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Environment Scanner Coin</div>
+          <div class="coin-subtitle">Real-time room & air quality sensing</div>
+        </div>
+        <div class="priority-badge">Priority 4</div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Sensors: temperature, humidity, UV index, VOC air quality</li>
+          <li>The most Star Trek–accurate coin in the set</li>
+          <li>Hold it up and open the app — room data in real time</li>
+          <li>Stack multiple coins to map an entire building's environment</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">BME680 / SHT40</span>
+          <span class="spec-tag">UV sensor</span>
+          <span class="spec-tag">VOC / air quality</span>
+          <span class="spec-tag">BLE readout</span>
+          <span class="spec-tag">Multi-coin mapping</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What VOC sensors fit inside a coin?" data-coin="Environment Scanner Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Sleep Coin -->
+    <div class="coin-card" style="--card-color: #a855f7;">
+      <div class="coin-header">
+        <div class="coin-emoji">💤</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Sleep Coin</div>
+          <div class="coin-subtitle">Bedtime haptics + ambient tracking</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Sits on your nightstand or slips under your pillow</li>
+          <li>Emits gentle haptic pulses and delta-wave frequencies at bedtime</li>
+          <li>Tracks temperature, humidity, and light levels while you sleep</li>
+          <li>Tricorder programs your sleep schedule; app shows nightly trends</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">Haptic motor</span>
+          <span class="spec-tag">Delta wave (0.5–4 Hz)</span>
+          <span class="spec-tag">Ambient sensors</span>
+          <span class="spec-tag">Sleep schedule sync</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What frequencies actually help sleep?" data-coin="Sleep Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Garden / Soil Coin -->
+    <div class="coin-card" style="--card-color: #4ade80;">
+      <div class="coin-header">
+        <div class="coin-emoji">🌱</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Garden / Soil Coin</div>
+          <div class="coin-subtitle">Smart soil sensor for your plants</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Push into soil — reads moisture, estimated pH, and light levels</li>
+          <li>App alerts: "Water now," "Move to more sun," "Nutrient low"</li>
+          <li>Deploy multiple coins to map an entire garden or grow room</li>
+          <li>Tricorder syncs all readings into one dashboard view</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">Soil moisture</span>
+          <span class="spec-tag">pH estimate</span>
+          <span class="spec-tag">Light sensor</span>
+          <span class="spec-tag">Waterproof rated</span>
+          <span class="spec-tag">Multi-coin grid</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What moisture level is ideal for tomatoes?" data-coin="Garden / Soil Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Bio Coin -->
+    <div class="coin-card" style="--card-color: #ff2d2d;">
+      <div class="coin-header">
+        <div class="coin-emoji">❤️</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Bio Coin</div>
+          <div class="coin-subtitle">Stress, heart rate, HRV — 30 seconds</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Galvanic skin response sensor on the coin edge detects stress/sweat</li>
+          <li>Optical heart rate sensor reads pulse via thin edge contact</li>
+          <li>Hold for 30 seconds → stress score + HRV reading in the app</li>
+          <li>Tricorder tracks trends over time; shows recovery patterns</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">GSR sensor</span>
+          <span class="spec-tag">Optical HR</span>
+          <span class="spec-tag">HRV tracking</span>
+          <span class="spec-tag">Stress score</span>
+          <span class="spec-tag">30-sec reading</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What is HRV and why does it matter?" data-coin="Bio Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Payment / Wallet Coin -->
+    <div class="coin-card" style="--card-color: #fb923c;">
+      <div class="coin-header">
+        <div class="coin-emoji">💳</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Payment / Wallet Coin</div>
+          <div class="coin-subtitle">Tap-to-pay + crypto cold storage</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>NFC payment token — works at any contactless terminal worldwide</li>
+          <li>Load funds and set spending limits from the phone app</li>
+          <li>Physical coin as your daily carry wallet — no card, no phone needed</li>
+          <li>Can act as a cold storage trigger for crypto wallets</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">NFC payment</span>
+          <span class="spec-tag">Spending limits</span>
+          <span class="spec-tag">Contactless</span>
+          <span class="spec-tag">Crypto cold storage</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="How does NFC payment work technically?" data-coin="Payment / Wallet Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Provenance / Collectible Coin -->
+    <div class="coin-card" style="--card-color: #ffd000;">
+      <div class="coin-header">
+        <div class="coin-emoji">📦</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Provenance Coin</div>
+          <div class="coin-subtitle">Blockchain authentication for collectibles</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>NFC UID cryptographically hashed and stored on-chain — tamper-proof</li>
+          <li>Scan any coin to see full owner history, mint date, and metadata</li>
+          <li>Pairs with physical gold, silver, or collectibles as their digital twin</li>
+          <li>The Tricorder base acts as the scanner and minter in one</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">On-chain UID hash</span>
+          <span class="spec-tag">Owner history</span>
+          <span class="spec-tag">NFT-level provenance</span>
+          <span class="spec-tag">Digital twin</span>
+          <span class="spec-tag">Anti-counterfeit</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="How do I mint a provenance record on-chain?" data-coin="Provenance Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Emergency Beacon Coin -->
+    <div class="coin-card" style="--card-color: #ff2d2d;">
+      <div class="coin-header">
+        <div class="coin-emoji">🚨</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Emergency Beacon Coin</div>
+          <div class="coin-subtitle">SOS GPS — lives in your wallet always</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Small, always-charged — designed to live in your wallet permanently</li>
+          <li>Long-press the edge → sends GPS coordinates to emergency contacts</li>
+          <li>Ultra-low-power GPS + BLE — weeks of standby between charges</li>
+          <li>Tricorder keeps it topped up and updates your contact list</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">Ultra-low-power GPS</span>
+          <span class="spec-tag">BLE</span>
+          <span class="spec-tag">Long-press SOS</span>
+          <span class="spec-tag">Weeks standby</span>
+          <span class="spec-tag">Contact sync</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="What GPS chip fits in something coin-sized?" data-coin="Emergency Beacon Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+    <!-- Frequency / Sound Coin -->
+    <div class="coin-card" style="--card-color: #a855f7;">
+      <div class="coin-header">
+        <div class="coin-emoji">🔊</div>
+        <div class="coin-title-block">
+          <div class="coin-name">Frequency / Sound Coin</div>
+          <div class="coin-subtitle">Tunable tones — meditation to pest repellent</div>
+        </div>
+      </div>
+      <div class="coin-body">
+        <ul class="coin-bullets">
+          <li>Tiny piezo element generates audible or sub-audible tones</li>
+          <li>Presets: meditation (432 Hz), focus (40 Hz gamma), tinnitus masking</li>
+          <li>Can emit dog-whistle or ultrasonic pest-repellent frequencies</li>
+          <li>App selects the frequency; Tricorder programs the preset list</li>
+        </ul>
+        <div class="coin-specs">
+          <span class="spec-tag">Piezo emitter</span>
+          <span class="spec-tag">432 Hz / 40 Hz</span>
+          <span class="spec-tag">Tinnitus masking</span>
+          <span class="spec-tag">Ultrasonic modes</span>
+          <span class="spec-tag">App-controlled</span>
+        </div>
+      </div>
+      <div class="ask-panel">
+        <div class="ask-label">🏎️ Ask JAXX about this coin</div>
+        <div class="ask-row">
+          <input class="ask-input" placeholder="Does 432 Hz music actually do anything?" data-coin="Frequency / Sound Coin" />
+          <button class="ask-btn" title="Ask JAXX">🚀</button>
+        </div>
+        <div class="ask-response"></div>
+      </div>
+    </div>
+
+  </div><!-- /coins-grid -->
+
+  <script>
+    document.querySelectorAll('.coin-card').forEach(card => {
+      const input   = card.querySelector('.ask-input');
+      const btn     = card.querySelector('.ask-btn');
+      const resp    = card.querySelector('.ask-response');
+      const coinName = input.dataset.coin || '';
+
+      async function ask() {
+        const q = input.value.trim();
+        if (!q) return;
+
+        btn.disabled = true;
+        resp.className = 'ask-response thinking';
+        resp.textContent = 'JAXX is burning rubber on this…';
+
+        try {
+          const res = await fetch('/tricorder/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ coin: coinName, question: q }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            resp.className = 'ask-response visible ask-error';
+            resp.textContent = '⚠️ ' + (err.error || `Server error ${res.status}`);
+            return;
+          }
+
+          const data = await res.json();
+          if (data.error) {
+            resp.className = 'ask-response visible ask-error';
+            resp.textContent = '⚠️ ' + data.error;
+          } else {
+            resp.className = 'ask-response visible';
+            resp.textContent = data.reply;
+          }
+        } catch (err) {
+          resp.className = 'ask-response visible ask-error';
+          resp.textContent = '⚠️ Network error: ' + err.message;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      btn.addEventListener('click', ask);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); ask(); }
+      });
+    });
+  </script>
+</body>
+</html>

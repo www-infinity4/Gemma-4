@@ -74,6 +74,18 @@
       white-space: nowrap;
     }
 
+    .nav-link {
+      font-size: 0.78rem;
+      color: var(--yellow);
+      text-decoration: none;
+      border: 1px solid var(--yellow);
+      border-radius: 20px;
+      padding: 3px 11px;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover { background: var(--yellow); color: #000; }
+
     /* ── Track ── */
     #track-section {
       background: var(--surface);
@@ -408,6 +420,7 @@
       <h1>JAXX</h1>
       <span class="tagline">The AI That Goes Fast</span>
     </div>
+    <a href="/tricorder" class="nav-link">📡 Tricorder</a>
     <span class="model-badge">{{ model }}</span>
   </header>
 
