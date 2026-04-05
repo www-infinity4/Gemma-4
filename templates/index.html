@@ -377,47 +377,15 @@
     #track-wrap {
       position: relative;
       width: min(520px, calc(100vw - 28px));
-      height: 76px;
+      height: 130px;
     }
-    #track-road {
-      position: absolute; inset: 0;
-      border-radius: 38px;
-      background: #222228;
-      border: 2px solid #333340;
-      box-shadow: 0 0 18px rgba(255,45,45,0.08), inset 0 2px 8px rgba(0,0,0,0.6);
-    }
-    #track-infield {
-      position: absolute; inset: 16px;
-      border-radius: 24px;
-      background: #131318;
-      border: 1px solid #2a2a35;
-    }
-    #track-dashes {
-      position: absolute; inset: 24px;
-      border-radius: 18px;
-      border: 1px dashed rgba(255,255,255,0.06);
-    }
-    #track-finish {
-      position: absolute; top: 0; bottom: 0;
-      left: calc(50% - 7px); width: 14px;
-      background: repeating-linear-gradient(
-        180deg,
-        rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 7px,
-        transparent 7px, transparent 14px
-      );
-    }
-    #kart {
+    #track-canvas {
       position: absolute;
-      font-size: 1.15rem; line-height: 1;
-      offset-path: path('M 494,38 A 234,24 0 1,1 26,38 A 234,24 0 1,1 494,38');
-      offset-distance: 0%; offset-rotate: 0deg;
-      animation: race-lap 4s linear infinite, kart-flip 4s linear infinite;
-      filter: drop-shadow(0 0 6px rgba(255,208,0,0.8));
-      z-index: 10;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-    #kart.thinking { animation-duration: 1.4s, 1.4s; filter: drop-shadow(0 0 10px rgba(255,45,45,1)); }
-    @keyframes race-lap { from { offset-distance: 0%; } to { offset-distance: 100%; } }
-    @keyframes kart-flip { 0% { transform: scaleX(-1); } 50% { transform: scaleX(1); } 100% { transform: scaleX(-1); } }
     #speed-bar {
       display: flex; align-items: center; gap: 7px;
       font-size: 0.6rem; color: var(--muted);
@@ -698,11 +666,7 @@
 
     <div id="track-section">
       <div id="track-wrap">
-        <div id="track-road"></div>
-        <div id="track-infield"></div>
-        <div id="track-dashes"></div>
-        <div id="track-finish"></div>
-        <div id="kart">🏎️</div>
+        <canvas id="track-canvas"></canvas>
       </div>
       <div id="speed-bar">
         <div id="speed-dot"></div>
@@ -821,7 +785,7 @@
     var clearBtn       = document.getElementById('clear-btn');
     var userInput      = document.getElementById('user-input');
     var sendBtn        = document.getElementById('send-btn');
-    var kart           = document.getElementById('kart');
+    var trackCanvas    = document.getElementById('track-canvas');
     var speedDot       = document.getElementById('speed-dot');
     var speedLabel     = document.getElementById('speed-label');
     var lightbox       = document.getElementById('lightbox');
@@ -834,6 +798,166 @@
     var history      = [];
     var pendingFiles = [];
     var busy         = false;
+
+    // ── Figure-8 Canvas Racing Track ──────────────────────────────────────────
+    (function() {
+      var ctx    = trackCanvas.getContext('2d');
+      var dpr    = window.devicePixelRatio || 1;
+      var raf    = null;
+      var W = 0, H = 0; // logical canvas size
+
+      // Parametric figure-8 (Lissajous 1:2): x=rx·sin(t), y=ry·sin(2t)
+      function fig8(t) {
+        var cx = W / 2, cy = H / 2;
+        var rx = W / 2 - 14, ry = H / 2 - 12;
+        return { x: cx + rx * Math.sin(t), y: cy + ry * Math.sin(2 * t) };
+      }
+
+      // Pre-build a lookup table for the path (used to draw the road)
+      var PATH_STEPS = 360;
+      function buildPath() {
+        ctx.beginPath();
+        for (var i = 0; i <= PATH_STEPS; i++) {
+          var t = (i / PATH_STEPS) * 2 * Math.PI;
+          var p = fig8(t);
+          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+      }
+
+      // Racers: JAXX (always present) + up to 2 AI racers
+      var jaxx    = { t: 0,                    speed: 0.012, emoji: '🏎️', glow: 'rgba(255,208,0,0.85)' };
+      var aiPool  = [
+        { t: Math.PI * 2 / 3,  speed: 0.0095, emoji: '🚗',  glow: 'rgba(37,99,235,0.9)'  },
+        { t: Math.PI * 4 / 3,  speed: 0.0105, emoji: '🚙',  glow: 'rgba(0,232,122,0.9)'  },
+      ];
+      var activeAi = []; // subset of aiPool actually racing
+
+      // Thinking-mode flag (changes JAXX speed/glow)
+      var thinking = false;
+
+      function resizeCanvas() {
+        var rect = trackCanvas.getBoundingClientRect();
+        W = rect.width  || 520;
+        H = rect.height || 130;
+        trackCanvas.width  = Math.round(W * dpr);
+        trackCanvas.height = Math.round(H * dpr);
+      }
+
+      function drawFrame() {
+        ctx.clearRect(0, 0, trackCanvas.width, trackCanvas.height);
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        // ── Draw road ──
+        buildPath();
+        // Outer glow
+        ctx.strokeStyle = 'rgba(255,45,45,0.07)';
+        ctx.lineWidth = 38;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        // Border
+        ctx.strokeStyle = '#353542';
+        ctx.lineWidth = 34;
+        ctx.stroke();
+        // Road surface
+        ctx.strokeStyle = '#1d1d28';
+        ctx.lineWidth = 28;
+        ctx.stroke();
+        // Centre dashes
+        ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([7, 9]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // ── Finish line at the crossing (t=0) ──
+        var fc = fig8(0);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(fc.x - 3, fc.y - 16);
+        ctx.lineTo(fc.x + 3, fc.y + 16);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        // ── Draw racers ──
+        var fontSize = Math.max(14, Math.min(20, H * 0.16));
+        ctx.font = fontSize + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // AI racers (drawn first, below JAXX)
+        activeAi.forEach(function(r) {
+          var p = fig8(r.t);
+          ctx.shadowBlur   = 8;
+          ctx.shadowColor  = r.glow;
+          ctx.fillText(r.emoji, p.x, p.y);
+          ctx.shadowBlur = 0;
+          r.t = (r.t + r.speed) % (2 * Math.PI);
+        });
+
+        // JAXX kart (on top)
+        var jp = fig8(jaxx.t);
+        ctx.shadowBlur  = thinking ? 14 : 8;
+        ctx.shadowColor = thinking ? 'rgba(255,45,45,1)' : jaxx.glow;
+        ctx.fillText(jaxx.emoji, jp.x, jp.y);
+        ctx.shadowBlur = 0;
+        jaxx.t = (jaxx.t + jaxx.speed) % (2 * Math.PI);
+
+        ctx.restore();
+        raf = requestAnimationFrame(drawFrame);
+      }
+
+      function start() {
+        resizeCanvas();
+        if (raf) cancelAnimationFrame(raf);
+        drawFrame();
+      }
+
+      window.addEventListener('resize', function() { resizeCanvas(); });
+
+      // Public API used by setThinking / sendMessage
+      window.Track = {
+        setThinking: function(on, aiCount) {
+          thinking       = on;
+          jaxx.speed     = on ? 0.028 : 0.012;
+          if (on) {
+            var count = Math.min(aiCount || 0, 2);
+            // Only reposition racers that weren't already active
+            for (var i = 0; i < count; i++) {
+              if (activeAi.indexOf(aiPool[i]) === -1) {
+                aiPool[i].t = Math.PI * (2 / 3) * (i + 1);
+              }
+            }
+            activeAi = aiPool.slice(0, count);
+          } else {
+            activeAi = [];
+          }
+        },
+      };
+
+      // Start after first paint so layout is ready
+      if (document.readyState === 'complete') {
+        start();
+      } else {
+        window.addEventListener('load', start);
+      }
+    }());
+
+    // Estimate question complexity → number of extra AI racers (0, 1, or 2)
+    function questionComplexity(text) {
+      if (!text) return 0;
+      var words = text.trim().split(/\s+/).length;
+      var chars = text.length;
+      var complex = /\b(explain|analyze|analyse|compare|describe|list|steps?|how|why|difference|versus|vs|pros|cons|detailed|comprehensive|everything|history|science|math|code|program|algorithm|database|research|multiple|calculate|solve|write|create|build|design|summarize|summarise)\b/i.test(text);
+      if (chars > 120 || words > 22 || (complex && chars > 60)) return 2;
+      if (chars > 45  || words > 8  || complex) return 1;
+      return 0;
+    }
 
     function loadSessions() {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
@@ -994,10 +1118,10 @@
     });
 
     // Kart state
-    function setThinking(on) {
+    function setThinking(on, aiCount) {
       busy = on;
       sendBtn.disabled = on;
-      kart.classList.toggle('thinking', on);
+      if (window.Track) window.Track.setThinking(on, aiCount || 0);
       speedDot.classList.toggle('hot', on);
       speedLabel.textContent = on
         ? 'MAX VELOCITY — thinking at full throttle 🔥'
@@ -1142,7 +1266,7 @@
       pendingFiles    = [];
       renderFilePreview();
 
-      setThinking(true);
+      setThinking(true, questionComplexity(text));
 
       var displayText = text || '(attachment)';
       addMessageDOM('user', displayText, '', imageUrls);
