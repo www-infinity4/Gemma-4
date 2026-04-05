@@ -21,7 +21,7 @@ app = Flask(__name__)
 _API_KEY = os.environ.get("API")
 
 # Underlying model
-GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-2.0-flash-001")
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-4-31b-it")
 
 # Maximum characters to include from a non-image file attachment
 _MAX_FILE_CHARS = 8_000
