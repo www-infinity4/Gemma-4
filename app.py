@@ -6,7 +6,9 @@ No manual key entry required — set the GitHub secret named 'API' and it just w
 """
 
 import os
-from flask import Flask, request, jsonify, render_template
+import base64
+import binascii
+from flask import Flask, request, jsonify, render_template, redirect
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
@@ -20,6 +22,9 @@ _API_KEY = os.environ.get("API")
 
 # Underlying model
 GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-2.0-flash-001")
+
+# Maximum characters to include from a non-image file attachment
+_MAX_FILE_CHARS = 8_000
 
 # JAXX persona injected as system instruction on every request
 JAXX_SYSTEM_PROMPT = (
@@ -86,26 +91,63 @@ def tricorder_ask():
     return jsonify({"reply": reply})
 
 
-@app.route("/chat", methods=["POST"])
+@app.route("/chat", methods=["GET", "POST"])
 def chat():
-    data = request.get_json(force=True)
-    history = data.get("history", [])   # list of {role, text} dicts
-    user_message = data.get("message", "").strip()
+    # Redirect accidental GET requests (e.g. direct browser navigation to /chat)
+    if request.method == "GET":
+        return redirect("/")
 
-    if not user_message:
+    data = request.get_json(force=True)
+    history = data.get("history", [])        # list of {role, text} dicts
+    user_message = data.get("message", "").strip()
+    attachments = data.get("files", [])      # list of {name, mime_type, data (base64)}
+
+    if not user_message and not attachments:
         return jsonify({"error": "Empty message"}), 400
 
     try:
         client = _get_client()
 
-        # Build contents list from conversation history + new user turn
+        # Build contents list from conversation history
         contents = []
         for turn in history:
             role = turn.get("role", "user")
             text = turn.get("text", "")
             contents.append({"role": role, "parts": [{"text": text}]})
 
-        contents.append({"role": "user", "parts": [{"text": user_message}]})
+        # Build user parts: images first, then text (optimal for multimodal models)
+        user_parts = []
+        for f in attachments:
+            mime_type = f.get("mime_type", "application/octet-stream")
+            file_data = f.get("data", "")
+            file_name = f.get("name", "file")
+
+            if mime_type.startswith("image/"):
+                user_parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": file_data,
+                    }
+                })
+            else:
+                try:
+                    decoded = base64.b64decode(file_data).decode("utf-8", errors="replace")
+                    # Truncate very large files to avoid token limits
+                    if len(decoded) > _MAX_FILE_CHARS:
+                        decoded = decoded[:_MAX_FILE_CHARS] + "\n… [truncated]"
+                    user_parts.append({
+                        "text": f"[Attached file: {file_name}]\n```\n{decoded}\n```"
+                    })
+                except (binascii.Error, ValueError, UnicodeDecodeError):
+                    user_parts.append({
+                        "text": f"[Attached binary file: {file_name} — unable to read as text]"
+                    })
+
+        if user_message:
+            user_parts.append({"text": user_message})
+
+        if user_parts:
+            contents.append({"role": "user", "parts": user_parts})
 
         response = client.models.generate_content(
             model=GEMMA_MODEL,
@@ -114,7 +156,7 @@ def chat():
                 system_instruction=JAXX_SYSTEM_PROMPT,
             ),
         )
-        reply = response.text
+        reply = response.text or "(No response generated)"
     except RuntimeError:
         return jsonify({"error": "No API key configured. Set the 'API' environment variable."}), 500
     except Exception:  # noqa: BLE001
