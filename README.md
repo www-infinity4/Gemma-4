@@ -44,3 +44,4 @@ Uses `gemma-4-31b-it` via the Google Gemini API.
 - Clean dark-mode chat UI
 - Shift+Enter for newlines, Enter to send
 - Clear conversation button
+<script src="https://www-infinity4.github.io/Mint-For-Infinity/infinity-wallet-menu.js" defer></script>
